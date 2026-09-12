@@ -572,4 +572,4 @@ class RequestResponseCycle:
         }
         self.body = b""
         return message
-        return message
+        return message  # pragma: no cover
