@@ -62,6 +62,7 @@ class Server:
         self.last_notified = 0.0
 
         self._captured_signals: list[int] = []
+        self.servers: list[asyncio.base_events.Server] = []
 
     def run(self, sockets: list[socket.socket] | None = None) -> None:
         return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
