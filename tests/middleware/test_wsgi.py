@@ -137,3 +137,20 @@ def test_build_environ_encoding() -> None:
     assert environ["SCRIPT_NAME"] == "/文".encode().decode("latin-1")
     assert environ["PATH_INFO"] == b"/all".decode("latin-1")
     assert environ["HTTP_KEY"] == "value1,value2"
+
+
+def multiple_chunks(environ: Environ, start_response: StartResponse) -> list[bytes]:
+    """WSGI app that returns multiple chunks."""
+    status = "200 OK"
+    headers = [("Content-Type", "text/plain; charset=utf-8")]
+    start_response(status, headers, None)
+    return [b"chunk1", b"chunk2", b"chunk3"]
+
+
+@pytest.mark.anyio
+async def test_wsgi_multiple_chunks(wsgi_middleware: Callable) -> None:
+    transport = httpx.ASGITransport(wsgi_middleware(multiple_chunks))
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/")
+    assert response.status_code == 200
+    assert response.text == "chunk1chunk2chunk3"
