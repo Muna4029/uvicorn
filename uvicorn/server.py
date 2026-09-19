@@ -63,6 +63,8 @@ class Server:
 
         self._captured_signals: list[int] = []
 
+        self.servers: list[asyncio.base_events.Server] = []
+
     def run(self, sockets: list[socket.socket] | None = None) -> None:
         return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
 
@@ -130,7 +132,7 @@ class Server:
                 sock_data = sock.share(os.getpid())  # type: ignore[attr-defined]
                 return fromshare(sock_data)
 
-            self.servers: list[asyncio.base_events.Server] = []
+            self.servers = []
             for sock in sockets:
                 is_windows = platform.system() == "Windows"
                 if config.workers > 1 and is_windows:  # pragma: py-not-win32

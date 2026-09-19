@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import sys
+import time
 from collections.abc import AsyncGenerator
 from typing import Callable
 
@@ -110,6 +111,33 @@ async def test_wsgi_exc_info(wsgi_middleware: Callable) -> None:
         response = await client.get("/")
     assert response.status_code == 500
     assert response.text == "Internal Server Error"
+
+
+@pytest.mark.anyio
+async def test_wsgi_sender_wait() -> None:
+    """Test that the sender method handles the case when the send queue is empty.
+    This covers the else branch in WSGIResponder.sender() where it waits on the
+    send_event (lines 154-155 in uvicorn/middleware/wsgi.py)."""
+
+    def slow_start_response(environ: Environ, start_response: StartResponse) -> list[bytes]:
+        # Sleep briefly to give the event loop time to run the sender task
+        # before start_response queues any messages.
+        time.sleep(0.01)
+        status = "200 OK"
+        output = b"Hello World!\n"
+        headers = [
+            ("Content-Type", "text/plain; charset=utf-8"),
+            ("Content-Length", str(len(output))),
+        ]
+        start_response(status, headers, None)
+        return [output]
+
+    app = wsgi._WSGIMiddleware(slow_start_response)
+    transport = httpx.ASGITransport(app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/")
+    assert response.status_code == 200
+    assert response.text == "Hello World!\n"
 
 
 def test_build_environ_encoding() -> None:
