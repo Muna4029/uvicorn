@@ -56,6 +56,7 @@ class Server:
         self.config = config
         self.server_state = ServerState()
 
+        self.servers: list[asyncio.base_events.Server] = []
         self.started = False
         self.should_exit = False
         self.force_exit = False
