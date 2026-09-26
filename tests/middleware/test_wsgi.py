@@ -137,3 +137,22 @@ def test_build_environ_encoding() -> None:
     assert environ["SCRIPT_NAME"] == "/文".encode().decode("latin-1")
     assert environ["PATH_INFO"] == b"/all".decode("latin-1")
     assert environ["HTTP_KEY"] == "value1,value2"
+
+
+def empty_body(environ: Environ, start_response: StartResponse):
+    status = "200 OK"
+    headers = [
+        ("Content-Type", "text/plain; charset=utf-8"),
+    ]
+    start_response(status, headers, None)
+    yield b""
+
+
+@pytest.mark.anyio
+async def test_wsgi_empty_response_body(wsgi_middleware: Callable) -> None:
+    app = wsgi_middleware(empty_body)
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/")
+    assert response.status_code == 200
+    assert response.text == ""
