@@ -1,4 +1,3 @@
-
 name: Test Suite
 
 on: push
@@ -52,6 +51,11 @@ jobs:
     - name: Build package & docs
       run: scripts/build
       shell: bash
+
+    - name: Keep coverage files outside watched directories
+      shell: bash
+      run: |
+        echo "COVERAGE_FILE=$(uv run python -c 'import os; print(os.path.abspath(".coverage"))')" >> "$GITHUB_ENV"
 
     - name: Run tests
       run: scripts/test
