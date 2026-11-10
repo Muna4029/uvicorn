@@ -27,6 +27,22 @@ jobs:
       run: scripts/install
       shell: bash
 
+    - name: Ensure compatible Twine
+      shell: bash
+      run: |
+        mkdir -p "$RUNNER_TEMP/uv-wrapper"
+        cat > "$RUNNER_TEMP/uv-wrapper/uv" <<'EOF'
+        #!/usr/bin/env bash
+        if [[ "$1" == "run" && "${2:-}" == "twine" ]]; then
+          shift 2
+          exec "$REAL_UV" run --with 'twine==7.0.0' twine "$@"
+        fi
+        exec "$REAL_UV" "$@"
+        EOF
+        chmod +x "$RUNNER_TEMP/uv-wrapper/uv"
+        echo "REAL_UV=$(command -v uv)" >> "$GITHUB_ENV"
+        echo "$RUNNER_TEMP/uv-wrapper" >> "$GITHUB_PATH"
+
     - name: Run linting checks
       run: scripts/check
       if: ${{ matrix.os == 'ubuntu-latest'}}
