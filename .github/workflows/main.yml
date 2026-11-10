@@ -1,3 +1,4 @@
+
 name: Test Suite
 
 on: push
@@ -27,6 +28,23 @@ jobs:
       run: scripts/install
       shell: bash
 
+    - name: Ensure compatible Twine
+      if: ${{ matrix.python-version != '3.9' }}
+      shell: bash
+      run: |
+        mkdir -p "$RUNNER_TEMP/uv-wrapper"
+        cat > "$RUNNER_TEMP/uv-wrapper/uv" <<'EOF'
+        #!/usr/bin/env bash
+        if [[ "$1" == "run" && "${2:-}" == "twine" ]]; then
+          shift 2
+          exec "$REAL_UV" run --with 'twine==7.0.0' twine "$@"
+        fi
+        exec "$REAL_UV" "$@"
+        EOF
+        chmod +x "$RUNNER_TEMP/uv-wrapper/uv"
+        echo "REAL_UV=$(command -v uv)" >> "$GITHUB_ENV"
+        echo "$RUNNER_TEMP/uv-wrapper" >> "$GITHUB_PATH"
+
     - name: Run linting checks
       run: scripts/check
       if: ${{ matrix.os == 'ubuntu-latest'}}
@@ -50,6 +68,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Decide whether the needed jobs succeeded or failed
-      uses: re-actors/alls-green@05ac9388f0aebcb5727afa17fcccfecd6f8ec5fe   # v1.2.2
+      uses: re-actors/alls-green@05ac9388f0aebcb5727afa17fcccfecd6f8ec5fe # v1.2.2
       with:
         jobs: ${{ toJSON(needs) }}
