@@ -30,12 +30,13 @@ jobs:
     - name: Ensure compatible Twine
       shell: bash
       run: |
+        uv python install 3.10
         mkdir -p "$RUNNER_TEMP/uv-wrapper"
         cat > "$RUNNER_TEMP/uv-wrapper/uv" <<'EOF'
         #!/usr/bin/env bash
         if [[ "$1" == "run" && "${2:-}" == "twine" ]]; then
           shift 2
-          exec "$REAL_UV" run --with 'twine==7.0.0' twine "$@"
+          exec "$REAL_UV" run --python 3.10 --no-project --with 'twine==7.0.0' twine "$@"
         fi
         exec "$REAL_UV" "$@"
         EOF
