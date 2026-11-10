@@ -20,12 +20,16 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
     - name: Pin h11 to compatible version
-      run: sed -i 's|h11 @ 
-        git+https://github.com/python-hyper/h11.git@master|h11==0.14.0|' 
-        requirements.txt
+      run: sed -i 's|h11 @ git+https://github.com/python-hyper/h11.git@master|h11==0.14.0|' requirements.txt
       shell: bash
     - name: Install dependencies
       run: scripts/install
+      shell: bash
+    - name: Verify h11 dependency
+      run: |
+        python -c "import h11; print('h11 version:', h11.__version__)"
+        python -m pip show mypy
+        python -c "import h11; assert h11.__version__ == '0.14.0', 'Unexpected h11 version'"
       shell: bash
     - name: Run linting checks
       run: scripts/check
