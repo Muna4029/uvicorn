@@ -16,7 +16,25 @@ from uvicorn import Config, Server
 async def run_server(config: Config, sockets: list[socket] | None = None) -> AsyncIterator[Server]:
     server = Server(config=config)
     task = asyncio.create_task(server.serve(sockets=sockets))
-    await asyncio.sleep(0.1)
+
+    # Wait for the server to start listening
+    host = config.host or "127.0.0.1"
+    port = config.port
+    for _ in range(5):
+        try:
+            reader, writer = await asyncio.wait_for(
+                asyncio.open_connection(host, port),
+                timeout=0.5,
+            )
+            writer.close()
+            await writer.wait_closed()
+            break
+        except (ConnectionRefusedError, OSError, TimeoutError):
+            await asyncio.sleep(0.1)
+    else:
+        # If we can't connect after retries, just proceed with the original sleep
+        await asyncio.sleep(0.1)
+
     try:
         yield server
     finally:
