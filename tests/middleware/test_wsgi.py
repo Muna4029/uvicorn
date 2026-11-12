@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import sys
+import time
 from collections.abc import AsyncGenerator
 from typing import Callable
 
@@ -112,6 +113,25 @@ async def test_wsgi_exc_info(wsgi_middleware: Callable) -> None:
     assert response.text == "Internal Server Error"
 
 
+def slow_hello(environ: Environ, start_response: StartResponse) -> list[bytes]:
+    time.sleep(0.05)
+    status = "200 OK"
+    output = b"Slow Hello World!\n"
+    headers = [
+        ("Content-Type", "text/plain; charset=utf-8"),
+        ("Content-Length", str(len(output))),
+    ]
+    start_response(status, headers, None)
+    return [output]
+
+
+@pytest.mark.anyio
+async def test_wsgi_slow_app(wsgi_middleware: Callable) -> None:
+    transport = httpx.ASGITransport(wsgi_middleware(slow_hello))
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/")
+    assert response.status_code == 200
+    assert response.text == "Slow Hello World!\n"
 def test_build_environ_encoding() -> None:
     scope: HTTPScope = {
         "asgi": {"version": "3.0", "spec_version": "2.0"},
