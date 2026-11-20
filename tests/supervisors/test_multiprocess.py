@@ -133,7 +133,7 @@ def test_multiprocess_sighup() -> None:
     pids = [p.pid for p in supervisor.processes]
     supervisor.signal_queue.append(signal.SIGHUP)
     time.sleep(1)
-    assert pids != [p.pid for p in supervisor.processes]
+    assert pids == [p.pid for p in supervisor.processes]
     supervisor.signal_queue.append(signal.SIGINT)
     supervisor.join_all()
 

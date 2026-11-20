@@ -8,6 +8,10 @@ import pytest
 from uvicorn.config import Config
 from uvicorn.loops.auto import auto_loop_factory
 from uvicorn.protocols.http.auto import AutoHTTPProtocol
+
+"""
+This module contains tests for automatic loop detection and protocol handling in Uvicorn.
+"""
 from uvicorn.protocols.websockets.auto import AutoWebSocketsProtocol
 from uvicorn.server import ServerState
 
@@ -35,14 +39,24 @@ except ImportError:  # pragma: no cover
 
 
 async def app(scope, receive, send):
+    """
+    ASGI application callable.
+
+    Args:
+        scope: The ASGI scope.
+        receive: A callable to receive messages.
+        send: A callable to send messages.
+    """
     pass  # pragma: no cover
 
 
 def test_loop_auto():
     loop_factory = auto_loop_factory(use_subprocess=True)
     with contextlib.closing(loop_factory()) as loop:
-        assert isinstance(loop, asyncio.AbstractEventLoop)
-        assert type(loop).__module__.startswith(expected_loop)
+        assert isinstance(
+            loop, asyncio.AbstractEventLoop
+        ), "Expected loop to be an instance of asyncio.AbstractEventLoop"
+        assert type(loop).__module__.startswith(expected_loop), "Loop module does not start with expected_loop"
 
 
 @pytest.mark.anyio
@@ -52,6 +66,7 @@ async def test_http_auto():
     protocol = AutoHTTPProtocol(  # type: ignore[call-arg]
         config=config, server_state=server_state, app_state={}
     )
+    assert isinstance(protocol, AutoHTTPProtocol), "Expected protocol to be an instance of AutoHTTPProtocol"
     assert type(protocol).__name__ == expected_http
 
 
@@ -60,6 +75,7 @@ async def test_websocket_auto():
     config = Config(app=app)
     server_state = ServerState()
 
-    assert AutoWebSocketsProtocol is not None
+    assert AutoWebSocketsProtocol is not None, "AutoWebSocketsProtocol should not be None"
     protocol = AutoWebSocketsProtocol(config=config, server_state=server_state, app_state={})
+    assert isinstance(protocol, AutoWebSocketsProtocol), "Expected protocol to be an instance of AutoWebSocketsProtocol"
     assert type(protocol).__name__ == expected_websockets

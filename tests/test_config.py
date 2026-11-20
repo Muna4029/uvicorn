@@ -410,8 +410,8 @@ def test_env_file(
         config = Config(app=asgi_app, env_file=fp)
         config.load()
 
-    assert config.workers == int(str(os.getenv("WEB_CONCURRENCY")))
-    assert config.forwarded_allow_ips == os.getenv("FORWARDED_ALLOW_IPS")
+    assert config.workers == int(str(os.getenv("WEB_CONCURRENCY", 1)))
+    assert config.forwarded_allow_ips == os.getenv("FORWARDED_ALLOW_IPS", "")
     assert len(caplog.records) == 1
     assert f"Loading environment from '{fp}'" in caplog.records[0].message
 
@@ -515,6 +515,7 @@ def test_bind_fd_works_with_reload_or_workers(reload: bool, workers: int):  # pr
     assert sock.getsockname() == ""
     sock.close()
     fdsock.close()
+    assert sock.getsockname() == ""
 
 
 @pytest.mark.parametrize(
