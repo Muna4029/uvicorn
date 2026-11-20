@@ -41,7 +41,7 @@ def _has_ipv6(host: str):
     "host, url",
     [
         pytest.param(None, "http://127.0.0.1", id="default"),
-        pytest.param("localhost", "http://127.0.0.1", id="hostname"),
+        pytest.param("localhost", "http://localhost", id="hostname"),
         pytest.param(
             "::1",
             "http://[::1]",
@@ -54,7 +54,10 @@ async def test_run(host, url: str, unused_tcp_port: int):
     config = Config(app=app, host=host, loop="asyncio", limit_max_requests=1, port=unused_tcp_port)
     async with run_server(config):
         async with httpx.AsyncClient() as client:
-            response = await client.get(f"{url}:{unused_tcp_port}")
+            try:
+                response = await client.get(f"{url}:{unused_tcp_port}")
+            except httpx.ConnectError:
+                pytest.fail("Connection failed, server might not be reachable")
     assert response.status_code == 204
 
 
