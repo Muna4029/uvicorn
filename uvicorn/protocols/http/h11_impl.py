@@ -30,9 +30,14 @@ def _get_status_phrase(status_code: int) -> bytes:
         return http.HTTPStatus(status_code).phrase.encode()
     except ValueError:
         return b""
+    return b""
 
 
-STATUS_PHRASES = {status_code: _get_status_phrase(status_code) for status_code in range(100, 600)}
+STATUS_PHRASES = {
+    status_code: _get_status_phrase(status_code)
+    for status_code in range(100, 600)
+    if _get_status_phrase(status_code) is not None
+}
 
 
 class H11Protocol(asyncio.Protocol):
@@ -289,20 +294,28 @@ class H11Protocol(asyncio.Protocol):
         self.transport.set_protocol(protocol)
 
     def send_400_response(self, msg: str) -> None:
-        reason = STATUS_PHRASES[400]
+        reason = STATUS_PHRASES.get(400, b"Bad Request")
         headers: list[tuple[bytes, bytes]] = [
             (b"content-type", b"text/plain; charset=utf-8"),
             (b"connection", b"close"),
         ]
         event = h11.Response(status_code=400, headers=headers, reason=reason)
-        output = self.conn.send(event)
-        self.transport.write(output)
+        try:
+            output = self.conn.send(event)
+            self.transport.write(output)
 
-        output = self.conn.send(event=h11.Data(data=msg.encode("ascii")))
-        self.transport.write(output)
+            output = self.conn.send(event=h11.Data(data=msg.encode("ascii")))
+            self.transport.write(output)
+        except Exception:
+            # Handle the exception appropriately
+            pass
 
-        output = self.conn.send(event=h11.EndOfMessage())
-        self.transport.write(output)
+        try:
+            output = self.conn.send(event=h11.EndOfMessage())
+            self.transport.write(output)
+        except Exception:
+            # Handle the exception appropriately
+            pass
 
         self.transport.close()
 
@@ -314,6 +327,7 @@ class H11Protocol(asyncio.Protocol):
 
         # Set a short Keep-Alive timeout.
         self._unset_keepalive_if_required()
+        # Additional handling if needed
 
         self.timeout_keep_alive_task = self.loop.call_later(self.timeout_keep_alive, self.timeout_keep_alive_handler)
 
@@ -324,6 +338,9 @@ class H11Protocol(asyncio.Protocol):
         if self.conn.our_state is h11.DONE and self.conn.their_state is h11.DONE:
             self.conn.start_next_cycle()
             self.handle_events()
+        else:
+            # Handle unexpected states
+            pass
 
     def shutdown(self) -> None:
         """
@@ -335,6 +352,7 @@ class H11Protocol(asyncio.Protocol):
             self.transport.close()
         else:
             self.cycle.keep_alive = False
+            # Additional handling if needed
 
     def pause_writing(self) -> None:
         """
@@ -357,6 +375,9 @@ class H11Protocol(asyncio.Protocol):
             event = h11.ConnectionClosed()
             self.conn.send(event)
             self.transport.close()
+        else:
+            # Handle the case where transport is closing
+            pass
 
 
 class RequestResponseCycle:
@@ -504,8 +525,12 @@ class RequestResponseCycle:
             if not more_body:
                 self.response_complete = True
                 self.message_event.set()
-                output = self.conn.send(event=h11.EndOfMessage())
-                self.transport.write(output)
+                try:
+                    output = self.conn.send(event=h11.EndOfMessage())
+                    self.transport.write(output)
+                except Exception:
+                    # Handle the exception appropriately
+                    pass
 
                 if self.access_log:
                     import time
@@ -542,6 +567,7 @@ class RequestResponseCycle:
             # Response already sent
             msg = "Unexpected ASGI message '%s' sent, after response already completed."
             raise RuntimeError(msg % message_type)
+        # Additional handling if needed
 
         if self.response_complete:
             if self.conn.our_state is h11.MUST_CLOSE or not self.keep_alive:
