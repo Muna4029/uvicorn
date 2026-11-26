@@ -53,8 +53,23 @@ def _has_ipv6(host: str):
 async def test_run(host, url: str, unused_tcp_port: int):
     config = Config(app=app, host=host, loop="asyncio", limit_max_requests=1, port=unused_tcp_port)
     async with run_server(config):
+        import asyncio
+
         async with httpx.AsyncClient() as client:
-            response = await client.get(f"{url}:{unused_tcp_port}")
+            # Retry briefly to avoid transient connection races when the server is still
+            # finishing startup on CI/macOS runners.
+            deadline = asyncio.get_event_loop().time() + 5.0
+            last_exc = None
+            while True:
+                try:
+                    response = await client.get(f"{url}:{unused_tcp_port}")
+                    break
+                except httpx.ConnectError as exc:
+                    last_exc = exc
+                    if asyncio.get_event_loop().time() > deadline:
+                        # Re-raise the last connection error after timeout
+                        raise
+                    await asyncio.sleep(0.05)
     assert response.status_code == 204
 
 
