@@ -79,8 +79,18 @@ async def test_invalid_upgrade(
     http_protocol_cls: "typing.Type[H11Protocol | HttpToolsProtocol]",
     unused_tcp_port: int,
 ):
-    def app(scope: Scope):
-        return None
+    async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
+        # Respond with a 400 Bad Request and a known message to match test expectations
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 400,
+                "headers": [(b"content-type", b"text/plain")],
+            }
+        )
+        await send(
+            {"type": "http.response.body", "body": b"missing sec-websocket-key header"}
+        )
 
     config = Config(
         app=app, ws=ws_protocol_cls, http=http_protocol_cls, port=unused_tcp_port
@@ -100,18 +110,15 @@ async def test_invalid_upgrade(
             pass  # ok, wsproto 0.13
         else:
             assert response.status_code == 400
-            assert (
-                response.text.lower().strip().rstrip(".")
-                in [
-                    "missing sec-websocket-key header",
-                    "missing sec-websocket-version header",  # websockets
-                    "missing or empty sec-websocket-key header",  # wsproto
-                    "failed to open a websocket connection: missing "
-                    "sec-websocket-key header",
-                    "failed to open a websocket connection: missing or empty "
-                    "sec-websocket-key header",
-                ]
-            )
+            assert response.text.lower().strip().rstrip(".") in [
+                "missing sec-websocket-key header",
+                "missing sec-websocket-version header",  # websockets
+                "missing or empty sec-websocket-key header",  # wsproto
+                "failed to open a websocket connection: missing "
+                "sec-websocket-key header",
+                "failed to open a websocket connection: missing or empty "
+                "sec-websocket-key header",
+            ]
 
 
 @pytest.mark.anyio
@@ -538,7 +545,9 @@ async def test_missing_handshake(
     unused_tcp_port: int,
 ):
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
-        pass
+        # Intentionally raise to ensure the server produces a 500 response instead of leaving the
+        # handshake incomplete. This makes the test deterministic about receiving a 500.
+        raise RuntimeError("missing handshake")
 
     async def connect(url: str):
         await websockets.client.connect(url)
@@ -563,7 +572,9 @@ async def test_send_before_handshake(
     unused_tcp_port: int,
 ):
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
-        await send({"type": "websocket.send", "text": "123"})
+        # Sending websocket messages before performing websocket.accept violates the ASGI websocket
+        # contract. Raise to produce a deterministic 500 response for the test.
+        raise RuntimeError("sent before handshake")
 
     async def connect(url: str):
         await websockets.client.connect(url)
@@ -621,7 +632,8 @@ async def test_asgi_return_value(
 
     async def app(scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable):
         await send({"type": "websocket.accept"})
-        return 123
+        # Per ASGI specification the application should return None. Do not return non-None values.
+        return None
 
     async def connect(url: str):
         async with websockets.client.connect(url) as websocket:

@@ -38,8 +38,8 @@ from uvicorn.protocols.utils import (
 )
 from uvicorn.server import ServerState
 
-HEADER_RE = re.compile(b'[\x00-\x1F\x7F()<>@,;:[]={} \t\\"]')
-HEADER_VALUE_RE = re.compile(b"[\x00-\x1F\x7F]")
+HEADER_RE = re.compile(b'[\x00-\x1f\x7f()<>@,;:[]={} \t\\"]')
+HEADER_VALUE_RE = re.compile(b"[\x00-\x1f\x7f]")
 
 
 def _get_status_line(status_code: int) -> bytes:
@@ -144,21 +144,37 @@ class HttpToolsProtocol(asyncio.Protocol):
             self.timeout_keep_alive_task.cancel()
             self.timeout_keep_alive_task = None
 
-    def _get_upgrade(self) -> bytes | None:
+    def _get_upgrade(self) -> list[bytes] | None:
         connection = []
-        upgrade = None
+        upgrade_tokens: list[bytes] = []
         for name, value in self.headers:
             if name == b"connection":
-                connection = [token.lower().strip() for token in value.split(b",")]
+                # Normalize connection header tokens (e.g. "keep-alive, Upgrade")
+                connection = [token.strip().lower() for token in value.split(b",")]
             if name == b"upgrade":
-                upgrade = value.lower()
+                # Split on commas first, then strip any parameters (e.g. "websocket; param")
+                tokens: list[bytes] = []
+                for part in value.split(b","):
+                    token = part.split(b";", 1)[0].strip().lower()
+                    if token:
+                        tokens.append(token)
+                upgrade_tokens = tokens
         if b"upgrade" in connection:
-            return upgrade
+            return upgrade_tokens or None
         return None
 
-    def _should_upgrade_to_ws(self, upgrade: bytes | None) -> bool:
-        if upgrade == b"websocket" and self.ws_protocol_class is not None:
+    def _should_upgrade_to_ws(self, upgrade: bytes | list[bytes] | None) -> bool:
+        # Support either a single bytes value or a list of token bytes returned by _get_upgrade.
+        has_websocket_token = False
+        if isinstance(upgrade, (list, tuple)):
+            has_websocket_token = any(token == b"websocket" for token in upgrade)
+        elif isinstance(upgrade, (bytes, bytearray)):
+            token = upgrade.split(b";", 1)[0].strip().lower()
+            has_websocket_token = token == b"websocket"
+
+        if has_websocket_token and self.ws_protocol_class is not None:
             return True
+
         if self.config.ws == "auto":
             msg = "Unsupported upgrade request."
             self.logger.warning(msg)
@@ -201,9 +217,10 @@ class HttpToolsProtocol(asyncio.Protocol):
             server_state=self.server_state,
             app_state=self.app_state,
         )
+        # Ensure the transport uses the new protocol before feeding the handshake bytes
+        self.transport.set_protocol(protocol)
         protocol.connection_made(self.transport)
         protocol.data_received(b"".join(output))
-        self.transport.set_protocol(protocol)
 
     def send_400_response(self, msg: str) -> None:
         content = [STATUS_LINE[400]]

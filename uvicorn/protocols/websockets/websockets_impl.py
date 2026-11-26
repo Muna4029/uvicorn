@@ -147,9 +147,18 @@ class WebSocketProtocol(WebSocketServerProtocol):
             not self.handshake_completed_event.is_set()
         )
         self.handshake_completed_event.set()
-        super().connection_lost(exc)
+        # Close transport (if present) before delegating to the superclass, and
+        # guard against the transport being cleared by the superclass to avoid
+        # raising during connection cleanup.
         if exc is None:
-            self.transport.close()
+            transport = getattr(self, "transport", None)
+            if transport is not None:
+                try:
+                    transport.close()
+                except Exception:
+                    # Best effort; ignore errors while closing transport during cleanup
+                    pass
+        super().connection_lost(exc)
 
     def shutdown(self) -> None:
         self.ws_server.closing = True
@@ -230,7 +239,26 @@ class WebSocketProtocol(WebSocketServerProtocol):
             b"\r\n",
             msg,
         ]
+        # Write raw bytes to the transport for immediate response
         self.transport.write(b"".join(content))
+
+        # Set initial_response so websockets' process_request sees the HTTP response
+        try:
+            self.initial_response = HTTPResponse(
+                status=http.HTTPStatus.INTERNAL_SERVER_ERROR,
+                headers=Headers(
+                    [
+                        ("content-type", "text/plain; charset=utf-8"),
+                        ("content-length", str(len(msg))),
+                        ("connection", "close"),
+                    ]
+                ),
+                body=msg,
+            )
+        except Exception:
+            # Be resilient if HTTPResponse construction fails for any reason
+            self.initial_response = None
+
         # Allow handler task to terminate cleanly, as websockets doesn't cancel it by
         # itself (see https://github.com/encode/uvicorn/issues/920)
         self.handshake_started_event.set()
