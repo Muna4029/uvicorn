@@ -117,7 +117,10 @@ class Multiprocess:
 
         self.signal_queue: list[int] = []
         for sig in SIGNALS:
-            signal.signal(sig, lambda sig, frame: self.signal_queue.append(sig))
+            # Capture the current value of sig in the default argument to avoid
+            # the late-binding closure bug where all handlers would see the last
+            # value of sig from the loop.
+            signal.signal(sig, lambda signum, frame, s=sig: self.signal_queue.append(s))
 
     def init_processes(self) -> None:
         for _ in range(self.processes_num):

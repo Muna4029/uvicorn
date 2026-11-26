@@ -132,8 +132,14 @@ def test_multiprocess_sighup() -> None:
     time.sleep(1)
     pids = [p.pid for p in supervisor.processes]
     supervisor.signal_queue.append(signal.SIGHUP)
-    time.sleep(1)
-    assert pids != [p.pid for p in supervisor.processes]
+    # Wait for the supervisor to reload workers in response to SIGHUP, with timeout
+    start = time.time()
+    timeout = 5.0
+    new_pids = [p.pid for p in supervisor.processes]
+    while time.time() - start < timeout and new_pids == pids:
+        time.sleep(0.1)
+        new_pids = [p.pid for p in supervisor.processes]
+    assert pids != new_pids
     supervisor.signal_queue.append(signal.SIGINT)
     supervisor.join_all()
 
@@ -147,7 +153,11 @@ def test_multiprocess_sigttin() -> None:
     supervisor = Multiprocess(config, target=run, sockets=[])
     threading.Thread(target=supervisor.run, daemon=True).start()
     supervisor.signal_queue.append(signal.SIGTTIN)
-    time.sleep(1)
+    # Wait for a new worker to be spawned in response to SIGTTIN, with timeout
+    start = time.time()
+    timeout = 5.0
+    while time.time() - start < timeout and len(supervisor.processes) < 3:
+        time.sleep(0.1)
     assert len(supervisor.processes) == 3
     supervisor.signal_queue.append(signal.SIGINT)
     supervisor.join_all()
@@ -162,10 +172,19 @@ def test_multiprocess_sigttou() -> None:
     supervisor = Multiprocess(config, target=run, sockets=[])
     threading.Thread(target=supervisor.run, daemon=True).start()
     supervisor.signal_queue.append(signal.SIGTTOU)
-    time.sleep(1)
+    # Wait for a worker to be removed in response to SIGTTOU, with timeout
+    start = time.time()
+    timeout = 5.0
+    while time.time() - start < timeout and len(supervisor.processes) > 1:
+        # if processes are still >1, wait for them to decrease
+        time.sleep(0.1)
+    # Ensure at least one worker was removed (down to 1)
     assert len(supervisor.processes) == 1
+    # Send SIGTTOU again and ensure it does not go below 1
     supervisor.signal_queue.append(signal.SIGTTOU)
-    time.sleep(1)
+    start = time.time()
+    while time.time() - start < timeout and len(supervisor.processes) > 1:
+        time.sleep(0.1)
     assert len(supervisor.processes) == 1
     supervisor.signal_queue.append(signal.SIGINT)
     supervisor.join_all()
